@@ -1,0 +1,116 @@
+joncl
+Apr '18
+I too was looking for a way to put Blynk in a class. Expanding on ferchinas’ idea, here is what I came with. I’m still a beginner in C/C++, but I’ll try to explain…
+
+First attempt:
+
+// MyBlynkSimpleEsp32.h
+
+#include <BlynkSimpleEsp32.h>
+
+// these are the four lines copied from BlynkSimpleEsp32.h
+static WiFiClient _blynkWifiClient;
+static BlynkArduinoClient _blynkTransport(_blynkWifiClient);
+BlynkWifi Blynk(_blynkTransport);
+#include <BlynkWidgets.h>
+// My.ino
+MyBlynkSimpleEsp32.h
+BlynkManager.h
+
+void setup()
+{
+    BlynkManager blynkManager;
+    blynkManager.Begin(&blynkManager, &Blynk);
+}
+// BlynkManager.h
+BlynkSimpleEsp32.h  // modified file with last four lines commented
+
+void BlynkManager::Begin(BlynkManager *instance, BlynkWifi *blynk);
+Problem with this is 1) compiler found two Blynk definitions: one in the ino and one in BlynkManager.h, and 2) WidgetLED would not compile from BlynkManager.h. After a few tries at it, here’s what I came up with:
+
+Working
+
+I actually ended up deleting MyBlynkSimpleEsp32.h.
+
+// My.ino
+BlynkManager.h
+// no Blynk includes here!
+
+void setup()
+{
+    BlynkManager blynkManager;
+    blynkManager.Begin(&blynkManager);
+}
+// BlynkManager.h
+BlynkSimpleEsp32.h  // same modified file
+
+// comment/copy/paste these two lines from the bottom of BlynkSimpleEsp32.h
+// line #1:
+static WiFiClient _blynkWifiClient;
+// line #2:
+static BlynkArduinoClient _blynkTransport(_blynkWifiClient);
+
+// only declare Blynk here - will do definition in cpp, so that compiler doesn't see two of them!
+// otherwise you get two Blynks when including from the ino!
+// extern is the key
+extern BlynkWifi Blynk;
+
+// this line also from the bottom of BlynkSimpleEsp32.h
+// widgets include has too be exactly here to work!
+#include <BlynkWidgets.h>
+
+// again, only declare your widgets here - will also define these in cpp!
+extern WidgetLED RelayLED;
+
+class BlynkManager
+{
+    void BlynkManager::Begin(BlynkManager *instance);
+public:
+    static bool GetIsFirstConnect();
+    static bool SetIsFirstConnect(bool b);
+
+    ...
+private:
+    static BlynkManager *instance;
+}
+// BlynkManager.cpp
+
+void BlynkManager::Begin(BlynkManager *i)
+{
+    instance = i;
+    Blynk.config(auth);
+    Blynk.connect();
+}
+...
+// an example of a Blynk function in BlynkManager.cpp
+BLYNK_CONNECTED()
+{
+    if (BlynkManager::GetIsFirstConnect())
+    {
+            Blynk.syncAll();
+            Blynk.notify("ESP32 Starting!");
+            Serial.println("Blynk connected!");
+            BlynkManager::SetIsFirstConnect(false);
+    }
+}
+
+// other example of Blynk functions
+BLYNK_READ(V1)
+{
+}
+
+BLYNK_WRITE(V2)
+{
+}
+
+// these lines go at the very bottom of BlynkManager.cpp:
+// define the instance
+BlynkManager *BlynkManager::instance;
+
+// define Blynk here (copied from BlynkSimpleEsp32.h)
+BlynkWifi Blynk(_blynkTransport);
+
+// define all widgets here
+WidgetLED RelayLED(V0);
+Hope this helps!
+
